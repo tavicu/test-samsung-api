@@ -1,0 +1,16 @@
+{
+  "name": "test-samsung-api",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tavicu/test-samsung-api.git"
+  },
+  "author": "Octavian Ruda",
+  "license": "ISC",
+  "dependencies": {
+    "node-fetch": "2.6.1",
+    "ws": "7.4.4"
+  }
+}
