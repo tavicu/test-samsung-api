@@ -1,8 +1,8 @@
 const ws        = require('ws');
-const fetch     = require('node-fetch');
 const ipAddress = process.argv[2];
 
-let socketBase, socketArt;
+let data = {};
+let socket;
 
 if (!ipAddress) {
     return console.error("\n\n" + 'IP address is missing! Example of running the script "node index.js 192.168.1.100"');
@@ -18,124 +18,73 @@ function separator() {
     return Promise.resolve();
 }
 
-function getInfo() {
-    console.log('getInfo - start');
-
-    return fetch(`http://${ipAddress}:8001/api/v2/`, {
-        timeout: 2000
-    })
-    .then(body => body.json())
-    .then(response => {
-        response.isSupport = JSON.parse(response.isSupport);
-
-        console.log('getInfo - response', response);
-    }).catch(error => {
-        console.log('getInfo - error', error);
-    });
-};
-
-
-function testBaseWs() {
-    console.log('testBaseWs - start');
+function connect() {
+    const endpoint = `ws://${ipAddress}:8001/api/v2/channels/com.samsung.art-app?name=VGVzdCBTYW1zdW5nIEFQSQ==`;
+    console.log(`connect to socket - ${endpoint}`);
 
     return new Promise(resolve => {
-        socketBase = new ws(`wss://${ipAddress}:8002/api/v2/channels/samsung.remote.control?name=VGVzdCBTYW1zdW5nIEFQSQ==`, {
+        socket = new ws(endpoint, {
             servername: '',
             handshakeTimeout: 2000,
             rejectUnauthorized: false
         })
-        .on('error', error => {
-            console.log('testBaseWs - error', error, "\n");
-            resolve();
-        })
+        .on('error', error => console.log('socket - error', error, "\n"))
+        .on('open', () => console.log('socket - open', "\n"))
+        .on('ping', () => console.log('socket - ping', "\n"))
+        .on('close', () => console.log('socket - closed', "\n"))
         .on('message', response => {
             response = JSON.parse(response);
 
-            resolve();
-            console.log('testBaseWs - message', response, "\n");
-        });
-    }).then(() => {
-        console.log('testBaseWs - send command');
-
-        return socketBase.send(JSON.stringify({
-            method : 'ms.remote.control',
-            params : {
-                Cmd          : 'Click',
-                DataOfCmd    : 'KEY_VOLUP',
-                Option       : false,
-                TypeOfRemote : 'SendRemoteKey'
+            if (response.event === 'ms.channel.connect') {
+                data = response.data;
             }
-        }), error => {
-            console.log('testBaseWs - send command - error', error);
-        });
-    })
-    .then(delay)
-    .finally(() => setTimeout(() => {
-        console.log('testBaseWs - terminate');
 
-        if (socketBase) {
-            socketBase.terminate();
-        }
-    }, 1000));
+            console.log('socket - message', response, "\n");
+        });
+
+        resolve();
+    });
 }
 
-
-function testArtWs() {
-    console.log('testArtWs - start');
-
-    return new Promise(resolve => {
-        socketArt = new ws(`ws://${ipAddress}:8001/api/v2/channels/com.samsung.art-app?name=VGVzdCBTYW1zdW5nIEFQSQ==`, {
-            servername: '',
-            handshakeTimeout: 2000,
-            rejectUnauthorized: false
-        })
-        .on('error', error => {
-            console.log('testArtWs - error', error, "\n");
-            resolve();
-        })
-        .on('message', response => {
-            response = JSON.parse(response);
-
-            resolve();
-            console.log('testArtWs - message', response, "\n");
-        });
-    }).then(() => {
-        console.log('testArtWs - send getStatus');
-
-        return socketArt.send(JSON.stringify({
-            method : 'ms.channel.emit',
-            params : {
-                data  : JSON.stringify({
-                    id:  'noop-id',
-                    request: 'get_artmode_status'
-                }),
-                to    : 'host',
-                event : 'art_app_request'
-            }
-        }), error => {
-            console.log('testArtWs - send getStatus - error', error);
-        });
-    })
-    .then(delay)
-    .finally(() => setTimeout(() => {
-        console.log('testArtWs - terminate');
-
-        if (socketArt) {
-            socketArt.terminate();
+function getStatus() {
+    let body = {
+        method : 'ms.channel.emit',
+        params : {
+            data  : JSON.stringify({
+                id:  data.id || 'noop-id',
+                request: 'get_artmode_status'
+            }),
+            to    : 'host',
+            event : 'art_app_request'
         }
-    }, 1000));
+    };
+
+    console.log('socket - send getStatus', body, "\n");
+
+    return socket.send(JSON.stringify(body), error => {
+        if (error) console.log('socket - send getStatus - error', error);
+    });
+}
+
+function manual() {
+    return new Promise(resolve => {
+        console.log('In the folowing 30 seconds please try to change the Art Mode on your TV with the phisical remote.');
+        console.log('Doing that should show some debugs regarding the status change.', "\n");
+
+        setTimeout(resolve, 30 * 1000);
+    });
+}
+
+function close() {
+    console.log('socket - terminate');
+    if (socket) socket.terminate();
 }
 
 separator()
-    .then(getInfo)
-    .then(separator)
-    .then(delay)
-    .then(testBaseWs)
-    .then(delay)
-    .then(separator)
-    .then(testArtWs)
-    .then(delay)
-    .then(separator)
+    .then(connect).then(delay).then(separator)
+    .then(getStatus).then(delay).then(separator)
+    .then(manual).then(delay).then(separator)
+    .then(close).then(delay)
     .then(() => {
         console.log("Please copy everything and share it on your Issue :)");
     });
