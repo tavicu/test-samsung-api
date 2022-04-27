@@ -2,7 +2,8 @@ const ws        = require('ws');
 const ipAddress = process.argv[2];
 
 let data = {};
-let socket;
+let token;
+let socketBase, socket;
 
 if (!ipAddress) {
     return console.error("\n\n" + 'IP address is missing! Example of running the script "node index.js 192.168.1.100"');
@@ -18,8 +19,44 @@ function separator() {
     return Promise.resolve();
 }
 
+function getToken() {
+    console.log('baseWS - start');
+
+    return new Promise(resolve => {
+        socketBase = new ws(`wss://${ipAddress}:8002/api/v2/channels/samsung.remote.control?name=VGVzdCBTYW1zdW5nIEFQSQ==`, {
+            servername: '',
+            handshakeTimeout: 2000,
+            rejectUnauthorized: false
+        })
+        .on('error', error => {
+            console.log('baseWS - error', error, "\n");
+            resolve();
+        })
+        .on('message', response => {
+            response = JSON.parse(response);
+
+            console.log('baseWS - message', response, "\n");
+
+            if (response.data && response.data.token) {
+                token = response.data.token;
+            }
+
+            if (response.event === 'ms.channel.connect') {
+                resolve();
+            }
+        });
+    })
+    .finally(() => setTimeout(() => {
+        console.log('baseWS - terminate');
+
+        if (socketBase) {
+            socketBase.terminate();
+        }
+    }, 1000));
+}
+
 function connect() {
-    const endpoint = `ws://${ipAddress}:8001/api/v2/channels/com.samsung.art-app?name=VGVzdCBTYW1zdW5nIEFQSQ==`;
+    const endpoint = `wss://${ipAddress}:8002/api/v2/channels/com.samsung.art-app?name=VGVzdCBTYW1zdW5nIEFQSQ==&token=${token}`;
     console.log(`connect to socket - ${endpoint}`);
 
     return new Promise(resolve => {
@@ -30,7 +67,6 @@ function connect() {
         })
         .on('error', error => console.log('socket - error', error, "\n"))
         .on('open', () => console.log('socket - open', "\n"))
-        .on('ping', () => console.log('socket - ping', "\n"))
         .on('close', () => console.log('socket - closed', "\n"))
         .on('message', response => {
             response = JSON.parse(response);
@@ -81,6 +117,7 @@ function close() {
 }
 
 separator()
+    .then(getToken).then(delay).then(separator)
     .then(connect).then(delay).then(separator)
     .then(getStatus).then(delay).then(separator)
     .then(manual).then(delay).then(separator)
